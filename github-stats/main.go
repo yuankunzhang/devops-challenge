@@ -18,15 +18,14 @@ var (
 )
 
 func init() {
-	token := flag.String("token", "", "the access token used when querying graphql")
 	detail := flag.Bool("detail", false, "show detailed statistics")
 	flag.Parse()
 
-	if *token == "" {
-		panic(fmt.Errorf("please provide a token"))
+	accessToken = os.Getenv("GITHUB_ACCESS_TOKEN")
+	if accessToken == "" {
+		panic(fmt.Errorf("GITHUB_ACCESS_TOKEN not set"))
 	}
 
-	accessToken = *token
 	showDetail = *detail
 }
 
