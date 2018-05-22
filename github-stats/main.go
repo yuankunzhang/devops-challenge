@@ -2,13 +2,28 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"sync"
-	"time"
 )
+
+var accessToken string
+
+func init() {
+	token := flag.String("token", "", "the access token used when querying graphql")
+	flag.Parse()
+
+	if *token == "" {
+		panic(fmt.Errorf("please provide a token"))
+	}
+
+	accessToken = *token
+}
 
 func main() {
 	// in is the data input channel.
@@ -37,20 +52,34 @@ func input(r io.Reader) <-chan string {
 	return in
 }
 
-func query(in <-chan string) (<-chan string, <-chan error) {
-	out := make(chan string)
+func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
+	out := make(chan *RepoStats)
 	errc := make(chan error)
+
 	go func() {
 		defer close(out)
 		var wg sync.WaitGroup
 
-		for i := range in {
+		client := NewClient(context.Background(), accessToken)
+
+		for s := range in {
 			wg.Add(1)
-			go func() {
+			go func(s string) {
 				defer wg.Done()
-				time.Sleep(5 * time.Second)
-				out <- i
-			}()
+				fields := strings.Split(s, "/")
+				if len(fields) != 2 {
+					// TODO(yuankun): handle this
+					fmt.Printf("invalid input")
+					return
+				}
+				stats, err := client.Query(fields[0], fields[1])
+				if err != nil {
+					// TODO(yuankun): handle this
+					fmt.Printf("query failed: %s", err)
+					return
+				}
+				out <- stats
+			}(s)
 		}
 
 		wg.Wait()
@@ -58,17 +87,22 @@ func query(in <-chan string) (<-chan string, <-chan error) {
 	return out, errc
 }
 
-func output(w io.Writer, out <-chan string) <-chan struct{} {
+func output(w io.Writer, out <-chan *RepoStats) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 
-		var s []string
+		writer := csv.NewWriter(w)
+		var records [][]string
+
+		records = append(records, CsvHeader())
+
 		for o := range out {
-			s = append(s, o)
+			records = append(records, o.CsvRecord())
 		}
 
-		fmt.Printf("%v\n", s)
+		writer.WriteAll(records)
+		writer.Flush()
 	}()
 	return done
 }
