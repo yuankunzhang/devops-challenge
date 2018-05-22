@@ -78,7 +78,7 @@ func input(r io.Reader) (<-chan string, <-chan inputError) {
 
 			// Invalid?
 			if len(strings.Split(s, "/")) != 2 {
-				errc <- inputError{s, fmt.Errorf("invalid input: Should be in format of $orgname/$repo")}
+				errc <- inputError{s, fmt.Errorf("invalid input: should be in format of $orgname/$repo")}
 				continue
 			}
 
@@ -170,20 +170,26 @@ func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan 
 		}
 
 		if showError {
-			fmt.Printf("\n\nInput Errors:\n")
-			for _, ie := range inputErrors {
-				fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+			if len(inputErrors) > 0 {
+				fmt.Printf("\n\nInput Errors:\n")
+				for _, ie := range inputErrors {
+					fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+				}
 			}
 
-			fmt.Printf("\n\nQuery Errors:\n")
-			for _, ie := range queryErrors {
-				fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+			if len(queryErrors) > 0 {
+				fmt.Printf("\n\nQuery Errors:\n")
+				for _, ie := range queryErrors {
+					fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+				}
 			}
 		}
 
 		if showSummary {
 			fmt.Printf("\n\nSummaries:\n")
-			fmt.Printf("  Total Unique Inputs (not including empty lines): %d\n  Succeeded: %d\n  Failed: %d\n", total, len(csvRecords), len(inputErrors))
+			fmt.Printf("  Total Unique Inputs (not including empty lines): %d\n", total)
+			fmt.Printf("  Succeeded: %d\n", len(csvRecords))
+			fmt.Printf("  Failed: %d\n", len(inputErrors) + len(queryErrors))
 		}
 	}()
 	return done

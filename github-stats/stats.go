@@ -66,7 +66,7 @@ const queryTemplate = `query{
 	repository(owner: "{{ .Owner }}", name: "{{ .Name }}") {
 		name
 		url
-		ref(qualifiedName: "{{ .Branch }}") {
+		defaultBranchRef {
 			target {
 				... on Commit {
           			history(first: 1) {
@@ -99,7 +99,7 @@ type QueryResult struct {
 		Repository struct {
 			Name string `json:"name"`
 			URL  string `json:"url"`
-			Ref  struct {
+			DefaultBranchRef  struct {
 				Target struct {
 					History struct {
 						Edges []struct {
@@ -113,7 +113,7 @@ type QueryResult struct {
 						} `json:"edges"`
 					} `json:"history"`
 				} `json:"target"`
-			} `json:"ref"`
+			} `json:"defaultBranchRef"`
 		} `json:"repository"`
 		RateLimit struct {
 			Limit     int       `json:"limit"`
@@ -180,12 +180,12 @@ func (client *Client) Query(owner, name string) (*RepoStats, error) {
 		return nil, errors.Errorf("query error: %v", out.Errors[0].Message)
 	}
 
-	if len(out.Data.Repository.Ref.Target.History.Edges) == 0 {
+	if len(out.Data.Repository.DefaultBranchRef.Target.History.Edges) == 0 {
 		return nil, errors.Errorf("query error: empty commit history")
 	}
 
 	repo := out.Data.Repository
-	author := repo.Ref.Target.History.Edges[0].Node.Author
+	author := repo.DefaultBranchRef.Target.History.Edges[0].Node.Author
 
 	return &RepoStats{
 		Name:       repo.Name,
