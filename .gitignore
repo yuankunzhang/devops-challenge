@@ -2,4 +2,5 @@
 github-stats/github-stats
 .DS_Store
 .terraform
-*.tfstate.back
+*.tfstate.backup
+fluent.conf
