@@ -18,14 +18,9 @@ var (
 	showError   bool
 )
 
-type inputError struct {
-	input string
-	error error
-}
-
 func init() {
-	summaryFlag := flag.Bool("summary", false, "show statistical summary")
-	errorFlag := flag.Bool("error", false, "show errors")
+	summaryFlag := flag.Bool("s", false, "show summaries")
+	errorFlag := flag.Bool("e", false, "show errors")
 	flag.Parse()
 
 	accessToken = os.Getenv("GITHUB_ACCESS_TOKEN")
@@ -39,33 +34,68 @@ func init() {
 
 func main() {
 	// in is the data input channel.
-	in := input(os.Stdin)
+	// ie is the channel that collects input errors.
+	in, ie := input(os.Stdin)
 
 	// out is the result output channel.
-	// errc collects all errors occurred when querying.
-	out, errc := query(in)
+	// qe is the channel that collects query errors.
+	out, qe := query(in)
 
 	// done will be closed once all output are flushed.
-	done := output(os.Stdout, out, errc)
+	done := output(os.Stdout, out, ie, qe)
 
+	// Wait until result outputted.
 	<-done
 }
 
-func input(r io.Reader) <-chan string {
-	in := make(chan string)
-	go func() {
-		defer close(in)
-		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
-			in <- strings.TrimSpace(scanner.Text())
-		}
-	}()
-	return in
+type inputError struct {
+	input string
+	error error
 }
 
-func query(in <-chan string) (<-chan *RepoStats, <-chan *inputError) {
+type queryError struct {
+	input string
+	error error
+}
+
+func input(r io.Reader) (<-chan string, <-chan inputError) {
+	in := make(chan string)
+	errc := make(chan inputError)
+	go func() {
+		defer close(in)
+		defer close(errc)
+
+		uniqueMap := make(map[string]struct{})
+
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			s := strings.TrimSpace(scanner.Text())
+
+			// Empty?
+			if s == "" {
+				continue
+			}
+
+			// Invalid?
+			if len(strings.Split(s, "/")) != 2 {
+				errc <- inputError{s, fmt.Errorf("invalid input: Should be in format of $orgname/$repo")}
+				continue
+			}
+
+			// Duplicated?
+			if _, ok := uniqueMap[s]; ok {
+				continue
+			}
+			uniqueMap[s] = struct{}{}
+			in <- s
+		}
+	}()
+	return in, errc
+}
+
+func query(in <-chan string) (<-chan *RepoStats, <-chan queryError) {
 	out := make(chan *RepoStats)
-	errc := make(chan *inputError)
+	errc := make(chan queryError)
 
 	go func() {
 		defer close(out)
@@ -78,25 +108,10 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan *inputError) {
 			wg.Add(1)
 			go func(s string) {
 				defer wg.Done()
-
-				item := strings.TrimSpace(s)
-
-				// Empty?
-				if item == "" {
-					return
-				}
-
 				fields := strings.Split(s, "/")
-
-				// Valid?
-				if len(fields) != 2 {
-					errc <- &inputError{s, fmt.Errorf("invalid input: Should be in format of $orgname/$repo")}
-					return
-				}
-
-				stats, err := client.Query(fields[0], fields[1])
+			stats, err := client.Query(fields[0], fields[1])
 				if err != nil {
-					errc <- &inputError{s, err}
+					errc <- queryError{s, err}
 					return
 				}
 				out <- stats
@@ -108,53 +123,67 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan *inputError) {
 	return out, errc
 }
 
-func output(w io.Writer, out <-chan *RepoStats, errc <-chan *inputError) <-chan struct{} {
+func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan queryError) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		var wg sync.WaitGroup
 
-		writer := csv.NewWriter(w)
 		var total = 0
-		var records [][]string
+		var csvRecords [][]string
 		var inputErrors []inputError
+		var queryErrors []queryError
 
-		wg.Add(1)
+		wg.Add(3)
+
 		go func() {
 			defer wg.Done()
 			for o := range out {
 				total += 1
-				records = append(records, o.CsvRecord())
+				csvRecords = append(csvRecords, o.CsvRecord())
 			}
 		}()
 
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for e := range errc {
+			for e := range ie {
 				total += 1
-				inputErrors = append(inputErrors, *e)
+				inputErrors = append(inputErrors, e)
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			for e := range qe {
+				total += 1
+				queryErrors = append(queryErrors, e)
 			}
 		}()
 
 		wg.Wait()
 
-		if len(records) > 0 {
+		if len(csvRecords) > 0 {
+			writer := csv.NewWriter(w)
 			writer.Write(CsvHeader())
-			writer.WriteAll(records)
+			writer.WriteAll(csvRecords)
 			writer.Flush()
 		}
 
 		if showError {
-			fmt.Printf("\n\nErrors:\n")
+			fmt.Printf("\n\nInput Errors:\n")
 			for _, ie := range inputErrors {
+				fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+			}
+
+			fmt.Printf("\n\nQuery Errors:\n")
+			for _, ie := range queryErrors {
 				fmt.Printf("  <%s> %s\n", ie.input, ie.error)
 			}
 		}
 
 		if showSummary {
-			fmt.Printf("\n\nSummary:\n")
-			fmt.Printf("  Total Inputs (not including empty lines): %d\n  Succeeded: %d\n  Failed: %d\n", total, len(records), len(inputErrors))
+			fmt.Printf("\n\nSummaries:\n")
+			fmt.Printf("  Total Unique Inputs (not including empty lines): %d\n  Succeeded: %d\n  Failed: %d\n", total, len(csvRecords), len(inputErrors))
 		}
 	}()
 	return done
