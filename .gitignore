@@ -1,3 +1,5 @@
 .idea/
 github-stats/github-stats
 .DS_Store
+.terraform
+*.tfstate.back
