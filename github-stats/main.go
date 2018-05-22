@@ -14,11 +14,18 @@ import (
 
 var (
 	accessToken string
-	showDetail  bool
+	showSummary bool
+	showError   bool
 )
 
+type inputError struct {
+	input string
+	error error
+}
+
 func init() {
-	detail := flag.Bool("detail", false, "show detailed statistics")
+	summaryFlag := flag.Bool("summary", false, "show statistical summary")
+	errorFlag := flag.Bool("error", false, "show errors")
 	flag.Parse()
 
 	accessToken = os.Getenv("GITHUB_ACCESS_TOKEN")
@@ -26,7 +33,8 @@ func init() {
 		panic(fmt.Errorf("GITHUB_ACCESS_TOKEN not set"))
 	}
 
-	showDetail = *detail
+	showSummary = *summaryFlag
+	showError = *errorFlag
 }
 
 func main() {
@@ -55,9 +63,9 @@ func input(r io.Reader) <-chan string {
 	return in
 }
 
-func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
+func query(in <-chan string) (<-chan *RepoStats, <-chan *inputError) {
 	out := make(chan *RepoStats)
-	errc := make(chan error)
+	errc := make(chan *inputError)
 
 	go func() {
 		defer close(out)
@@ -82,13 +90,13 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
 
 				// Valid?
 				if len(fields) != 2 {
-					errc <- fmt.Errorf("invalid input")
+					errc <- &inputError{s, fmt.Errorf("invalid input: Should be in format of $orgname/$repo")}
 					return
 				}
 
 				stats, err := client.Query(fields[0], fields[1])
 				if err != nil {
-					errc <- err
+					errc <- &inputError{s, err}
 					return
 				}
 				out <- stats
@@ -100,20 +108,22 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
 	return out, errc
 }
 
-func output(w io.Writer, out <-chan *RepoStats, errc <-chan error) <-chan struct{} {
+func output(w io.Writer, out <-chan *RepoStats, errc <-chan *inputError) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		var wg sync.WaitGroup
 
 		writer := csv.NewWriter(w)
+		var total = 0
 		var records [][]string
-		var errors []error
+		var inputErrors []inputError
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for o := range out {
+				total += 1
 				records = append(records, o.CsvRecord())
 			}
 		}()
@@ -122,7 +132,8 @@ func output(w io.Writer, out <-chan *RepoStats, errc <-chan error) <-chan struct
 		go func() {
 			defer wg.Done()
 			for e := range errc {
-				errors = append(errors, e)
+				total += 1
+				inputErrors = append(inputErrors, *e)
 			}
 		}()
 
@@ -134,8 +145,16 @@ func output(w io.Writer, out <-chan *RepoStats, errc <-chan error) <-chan struct
 			writer.Flush()
 		}
 
-		if showDetail {
-			fmt.Printf("\n\nQueries: %d\nErrors: %d\n", len(records), len(errors))
+		if showError {
+			fmt.Printf("\n\nErrors:\n")
+			for _, ie := range inputErrors {
+				fmt.Printf("  <%s> %s\n", ie.input, ie.error)
+			}
+		}
+
+		if showSummary {
+			fmt.Printf("\n\nSummary:\n")
+			fmt.Printf("  Total Inputs (not including empty lines): %d\n  Succeeded: %d\n  Failed: %d\n", total, len(records), len(inputErrors))
 		}
 	}()
 	return done

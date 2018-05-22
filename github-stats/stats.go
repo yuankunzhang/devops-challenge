@@ -181,7 +181,7 @@ func (client *Client) Query(owner, name string) (*RepoStats, error) {
 	}
 
 	if len(out.Data.Repository.Ref.Target.History.Edges) == 0 {
-		return nil, errors.Errorf("empty commit history")
+		return nil, errors.Errorf("query error: empty commit history")
 	}
 
 	repo := out.Data.Repository
