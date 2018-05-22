@@ -12,10 +12,14 @@ import (
 	"sync"
 )
 
-var accessToken string
+var (
+	accessToken string
+	showDetail  bool
+)
 
 func init() {
 	token := flag.String("token", "", "the access token used when querying graphql")
+	detail := flag.Bool("detail", false, "show detailed statistics")
 	flag.Parse()
 
 	if *token == "" {
@@ -23,6 +27,7 @@ func init() {
 	}
 
 	accessToken = *token
+	showDetail = *detail
 }
 
 func main() {
@@ -30,10 +35,11 @@ func main() {
 	in := input(os.Stdin)
 
 	// out is the result output channel.
-	out, _ := query(in)
+	// errc collects all errors occurred when querying.
+	out, errc := query(in)
 
 	// done will be closed once all output are flushed.
-	done := output(os.Stdout, out)
+	done := output(os.Stdout, out, errc)
 
 	<-done
 }
@@ -46,8 +52,6 @@ func input(r io.Reader) <-chan string {
 		for scanner.Scan() {
 			in <- strings.TrimSpace(scanner.Text())
 		}
-
-		fmt.Printf("\n\nProcessing, this may take a while...\n\n")
 	}()
 	return in
 }
@@ -58,6 +62,7 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
 
 	go func() {
 		defer close(out)
+		defer close(errc)
 		var wg sync.WaitGroup
 
 		client := NewClient(context.Background(), accessToken)
@@ -66,16 +71,25 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
 			wg.Add(1)
 			go func(s string) {
 				defer wg.Done()
-				fields := strings.Split(s, "/")
-				if len(fields) != 2 {
-					// TODO(yuankun): handle this
-					fmt.Printf("invalid input")
+
+				item := strings.TrimSpace(s)
+
+				// Empty?
+				if item == "" {
 					return
 				}
+
+				fields := strings.Split(s, "/")
+
+				// Valid?
+				if len(fields) != 2 {
+					errc <- fmt.Errorf("invalid input")
+					return
+				}
+
 				stats, err := client.Query(fields[0], fields[1])
 				if err != nil {
-					// TODO(yuankun): handle this
-					fmt.Printf("query failed: %s", err)
+					errc <- err
 					return
 				}
 				out <- stats
@@ -87,22 +101,43 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan error) {
 	return out, errc
 }
 
-func output(w io.Writer, out <-chan *RepoStats) <-chan struct{} {
+func output(w io.Writer, out <-chan *RepoStats, errc <-chan error) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		var wg sync.WaitGroup
 
 		writer := csv.NewWriter(w)
 		var records [][]string
+		var errors []error
 
-		records = append(records, CsvHeader())
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for o := range out {
+				records = append(records, o.CsvRecord())
+			}
+		}()
 
-		for o := range out {
-			records = append(records, o.CsvRecord())
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for e := range errc {
+				errors = append(errors, e)
+			}
+		}()
+
+		wg.Wait()
+
+		if len(records) > 0 {
+			writer.Write(CsvHeader())
+			writer.WriteAll(records)
+			writer.Flush()
 		}
 
-		writer.WriteAll(records)
-		writer.Flush()
+		if showDetail {
+			fmt.Printf("\n\nQueries: %d\nErrors: %d\n", len(records), len(errors))
+		}
 	}()
 	return done
 }
