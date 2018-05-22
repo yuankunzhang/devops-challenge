@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  fluentd:
+    build: ./fluentd
+    restart: always
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+
+  nginx:
+    image: nginx:latest
+    restart: always
+    volumes:
+      - ./webapp:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - fluentd
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
