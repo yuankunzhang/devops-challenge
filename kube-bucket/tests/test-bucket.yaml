@@ -1,0 +1,8 @@
+apiVersion: storagek8s.honestbee.io/v1
+kind: Bucket
+metadata:
+  name: my-bucket
+spec:
+  bucketName: me.yuankun.my-awesome-bucket
+  region: ap-southeast-1
+  forceDelete: true
