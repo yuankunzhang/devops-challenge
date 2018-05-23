@@ -8,7 +8,7 @@ The following official Docker images are used:
 - [Elasticsearch](https://hub.docker.com/_/elasticsearch/)
 - [Kibana](https://hub.docker.com/_/kibana/)
 
-The official [Fluentd](https://hub.docker.com/r/fluent/fluentd/) image does not provide support for Elasticsearch and S3. We use it as base image and build a new image upon it with `fluent-plugin-elasticsearch` and `fluent-plugin-s3` installed.
+The official [Fluentd](https://hub.docker.com/r/fluent/fluentd/) image does not provide support for Elasticsearch and S3. We use it as base image and build a new image on top of it with `fluent-plugin-elasticsearch` and `fluent-plugin-s3` installed.
 
 ## Collecting Logs to Elasticsearch
 
@@ -30,7 +30,7 @@ The first step is to create a S3 bucket.
 
 Make sure you have AWS credentials properly set (either by [shared credentials file](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html) or by [environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-environment.html)). And make sure you have [Terraform](https://www.terraform.io/) installed.
 
-Go to the `terraform/` sub-directory and run `terraform apply`. After some seconds, a new S3 bucket will be created (if it hasn't been created yet).
+Go to the `terraform/` sub-directory and run `terraform apply`. After a few seconds, a new S3 bucket will be created (if it hasn't been created yet).
 
 The next step is to prepare the Fluentd config file.
 
@@ -38,7 +38,7 @@ The next step is to prepare the Fluentd config file.
 # Create the config file.
 $ cp fluentd/fluent.s3.conf.sample fluentd/fluent.s3.conf
 
-# Edit this file by changing values of the following config items:
+# Edit this file by setting values of the following config items:
 #   aws_key_id
 #   aws_sec_key
 #   s3_region
@@ -57,9 +57,11 @@ After the containers are created and started, you can now access the index page 
 
 To be done:
 
-- Implement the deployment manifests for Kubernetes.
+- Supporting Kubernetes deployment.
+- Supporing health checks for each service.
 - It's not trivial to fine-tune the performance and resouce consuming of Elasticsearch, but that's beyond this task.
 
 To dig deep:
 
 - How to reload the configurations for Nginx/Fluentd/Elasticsearch/Kibana without restarting the containers?
+- Will there be any bottlenecks under a high-traffic scenario? How to make sure the whole system is high available?
