@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-bucket
+spec:
+  selector:
+    matchLabels:
+      app: kube-bucket
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: kube-bucket
+    spec:
+      containers:
+      - name: kube-bucket
+        image: kube-bucket:latest
+        imagePullPolicy: Never
+        env:
+          - name: AWS_ACCESS_KEY_ID
+            value: xxx
+          - name: AWS_SECRET_ACCESS_KEY
+            value: xxx
+          - name: AWS_REGION
+            value: xxx
