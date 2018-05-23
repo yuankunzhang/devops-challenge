@@ -56,18 +56,19 @@ func (b *BucketHandler) ObjectCreated(obj interface{}) {
 // ObjectDelete implements the Handler interface.
 func (b *BucketHandler) ObjectDeleted(obj interface{}) {
 	log.Info("BucketHandler.ObjectDeleted()")
-	//bucket := obj.(*v1.Bucket)
-	//forceDelete := bucket.Spec.ForceDelete
+	bucket := obj.(*v1.Bucket)
+	forceDelete := bucket.Spec.ForceDelete
 
-	//if forceDelete {
-	//bucketName := bucket.Spec.BucketName
-	//b.deleteS3Bucket(bucketName)
-	//}
+	if forceDelete {
+		bucketName := bucket.Spec.BucketName
+		b.deleteS3Bucket(bucketName)
+	}
 }
 
 // ObjectUpdated implements the Handler interface.
 func (b *BucketHandler) ObjectUpdated(objOld, objNew interface{}) {
 	log.Info("BucketHandler.ObjectUpdated()")
+	// TODO(yuankun): complete this.
 }
 
 func (b *BucketHandler) deleteS3Bucket(bucket string) {
