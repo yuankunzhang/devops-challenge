@@ -2,7 +2,7 @@
 
 A simple Golang program that fetches properties for a given list of public Github repositories.
 
-It reads the repository list from stdin. The list should be separated by new-lines. And each line should have this format: `$orgname/$repo`. Empty lines will be ignored and duplicates will be removed.
+It reads the repository list from stdin. The list should be separated by new-lines. And each line should have this format: `$orgname/$repo`. Empty lines will be ignored and duplicates will be removed. Leading and trailing spaces in a line will be removed.
 
 For example, this is a valid input:
 
@@ -10,7 +10,7 @@ For example, this is a valid input:
 octocat/hello-worId
 kubernetes/charts
 
-torvalds/linux
+   torvalds/linux
 kubernetes/charts
 <EOF>
 ```
@@ -136,3 +136,21 @@ $ docker run --rm -it -e GITHUB_ACCESS_TOKEN=xxx github-stats:latest [-s, [-e]]
 ```
 
 ## Follow ups
+
+Designing choices:
+
+- I choose to use the GraphQL API instead of the Restful API, because it offers more flexibility to interact with Github. And it gives the client app a better performance (especially when the client app is large).
+- The output order can be different from the input order, because of concurrency. We can sequentialize the API requests in order to keep the order, but the performance can be a big pain. Another approach to keep the order is to sort the result before printing it.
+- The commit history is fetched from the default branch. Some repositories do not have a master branch.
+- I choose to use `context.Background()` when sending requests. This is only a starting point, and needed to be improved.
+
+Can be improved:
+
+- Sorting the result to keep the output order the same as the input order.
+- Fetching the commit history from a branch specified by the user.
+- Using a custom context instead of `context.Background()`.
+- Adding more fields to fetch, e.g. number of forks. This will be easy to achieve, thanks to the GraphQL API.
+
+To be done:
+
+- The rate limiting functionality is not implemented yet. According to the [doc](https://developer.github.com/v4/guides/resource-limitations/), this will be pretty straightforward.
