@@ -13,4 +13,6 @@ $ tree -L 1
 3 directories, 1 file
 ```
 
-See each sub-directory's README.md file for more details.
+See each sub project's README.md file for more details.
+
+The `master` branch is the stable branch. Each sub project has its own development branch.
