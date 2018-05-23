@@ -3,6 +3,7 @@ package main
 import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/yuankunzhang/devops-challenge/kube-bucket/pkg/apis/bucket/v1"
 )
@@ -32,25 +33,24 @@ func (b *BucketHandler) ObjectCreated(obj interface{}) {
 	bucket := obj.(*v1.Bucket)
 	bucketName := bucket.Spec.BucketName
 
-	_, err := b.s3.CreateBucket(&s3.CreateBucketInput{
-		Bucket: aws.String(bucketName),
-	})
-
+	exists, err := b.bucketExists(bucketName)
 	if err != nil {
-		log.Errorf("BucketHandler.ObjectCreated(): %v", err)
+		log.Errorf("failed to check bucket: %v", err)
 		return
 	}
 
-	err = b.s3.WaitUntilBucketExists(&s3.HeadBucketInput{
-		Bucket: aws.String(bucketName),
-	})
-
-	if err != nil {
-		log.Errorf("BucketHandler.ObjectCreated(): %v", err)
+	if exists {
+		log.Info("bucket exists")
 		return
 	}
 
-	log.Infof("BucketHandler.ObjectCreated(): bucket %s created", bucketName)
+	err = b.createBucket(bucketName)
+	if err != nil {
+		log.Errorf("failed to create bucket: %v", err)
+		return
+	}
+
+	log.Info("create bucket success")
 }
 
 // ObjectDelete implements the Handler interface.
@@ -61,7 +61,13 @@ func (b *BucketHandler) ObjectDeleted(obj interface{}) {
 
 	if forceDelete {
 		bucketName := bucket.Spec.BucketName
-		b.deleteS3Bucket(bucketName)
+		err := b.deleteBucket(bucketName)
+		if err != nil {
+			log.Errorf("failed to delete bucket: %v", err)
+			return
+		}
+
+		log.Info("delete bucket success")
 	}
 }
 
@@ -71,20 +77,58 @@ func (b *BucketHandler) ObjectUpdated(objOld, objNew interface{}) {
 	// TODO(yuankun): complete this.
 }
 
-func (b *BucketHandler) deleteS3Bucket(bucket string) {
+func (b *BucketHandler) bucketExists(bucket string) (bool, error) {
+	_, err := b.s3.HeadBucket(&s3.HeadBucketInput{Bucket: aws.String(bucket)})
+
+	if err == nil {
+		// Exists.
+		return true, nil
+	}
+
+	if aerr, ok := err.(awserr.Error); ok {
+		// TODO(yuankun): might miss some cases.
+		switch aerr.Code() {
+		case s3.ErrCodeNoSuchBucket:
+			fallthrough
+		case "NotFound":
+			// Not exists.
+			return false, nil
+		}
+	}
+
+	// Failed to check.
+	return false, err
+}
+
+func (b *BucketHandler) createBucket(bucket string) error {
+	_, err := b.s3.CreateBucket(&s3.CreateBucketInput{Bucket: aws.String(bucket)})
+	if err != nil {
+		return err
+	}
+
+	err = b.s3.WaitUntilBucketExists(&s3.HeadBucketInput{Bucket: aws.String(bucket)})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *BucketHandler) deleteBucket(bucket string) error {
 	hasMore := true
 	total := 0
 
 	for hasMore {
-		resp, err := b.s3.ListObjects(&s3.ListObjectsInput{
-			Bucket: aws.String(bucket),
-		})
+		resp, err := b.s3.ListObjects(&s3.ListObjectsInput{Bucket: aws.String(bucket)})
 		if err != nil {
-			log.Errorf("BucketHandler.deleteS3Bucket(): %v", err)
-			return
+			return err
 		}
 
 		num := len(resp.Contents)
+		if num == 0 {
+			break
+		}
+
 		total += num
 
 		var items s3.Delete
@@ -98,29 +142,30 @@ func (b *BucketHandler) deleteS3Bucket(bucket string) {
 		items.SetObjects(objs)
 
 		// Delete the items.
-		_, err = b.s3.DeleteObjects(&s3.DeleteObjectsInput{
-			Bucket: aws.String(bucket),
-			Delete: &items,
-		})
+		_, err = b.s3.DeleteObjects(&s3.DeleteObjectsInput{Bucket: aws.String(bucket), Delete: &items})
 
 		if err != nil {
-			log.Errorf("BucketHandler.deleteS3Bucket(): %v", err)
-			return
+			return err
 		}
 
 		hasMore = *resp.IsTruncated
 	}
 
-	log.Infof("BucketHandler.deleteS3Bucket(): %d objects deleted from bucket %s", total, bucket)
+	log.Infof("BucketHandler.deleteBucket(): %d objects deleted from bucket %s", total, bucket)
 
-	_, err := b.s3.DeleteBucket(&s3.DeleteBucketInput{
+	_, err := b.s3.DeleteBucket(&s3.DeleteBucketInput{Bucket: aws.String(bucket)})
+
+	if err != nil {
+		return err
+	}
+
+	err = b.s3.WaitUntilBucketNotExists(&s3.HeadBucketInput{
 		Bucket: aws.String(bucket),
 	})
 
 	if err != nil {
-		log.Errorf("BucketHandler.deleteS3Bucket(): %v", err)
-		return
+		return err
 	}
 
-	log.Infof("BucketHandler.deleteS3Bucket(): bucket %s deleted", bucket)
+	return nil
 }
