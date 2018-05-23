@@ -13,9 +13,14 @@ import (
 )
 
 var (
+	// accessToken is the personal access token for Github.
 	accessToken string
+
+	// showSummary indicates whether or not to show summaries.
 	showSummary bool
-	showError   bool
+
+	// showError indicates whether or not to show errors.
+	showError bool
 )
 
 func init() {
@@ -48,11 +53,13 @@ func main() {
 	<-done
 }
 
+// inputError represents an error occurred when accepting user input.
 type inputError struct {
 	input string
 	error error
 }
 
+// queryError represents an error occurred when requesting to Github API.
 type queryError struct {
 	input string
 	error error
@@ -65,9 +72,12 @@ func input(r io.Reader) (<-chan string, <-chan inputError) {
 		defer close(in)
 		defer close(errc)
 
+		// This map is used to remove duplicates.
 		uniqueMap := make(map[string]struct{})
 
 		scanner := bufio.NewScanner(r)
+
+		// Read from stdin, until EOF.
 		for scanner.Scan() {
 			s := strings.TrimSpace(scanner.Text())
 
@@ -109,7 +119,7 @@ func query(in <-chan string) (<-chan *RepoStats, <-chan queryError) {
 			go func(s string) {
 				defer wg.Done()
 				fields := strings.Split(s, "/")
-			stats, err := client.Query(fields[0], fields[1])
+				stats, err := client.Query(fields[0], fields[1])
 				if err != nil {
 					errc <- queryError{s, err}
 					return
@@ -136,6 +146,7 @@ func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan 
 
 		wg.Add(3)
 
+		// Collect csv records.
 		go func() {
 			defer wg.Done()
 			for o := range out {
@@ -144,6 +155,7 @@ func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan 
 			}
 		}()
 
+		// Collect input errors.
 		go func() {
 			defer wg.Done()
 			for e := range ie {
@@ -152,6 +164,7 @@ func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan 
 			}
 		}()
 
+		// Collect query errors.
 		go func() {
 			defer wg.Done()
 			for e := range qe {
@@ -189,7 +202,7 @@ func output(w io.Writer, out <-chan *RepoStats, ie <-chan inputError, qe <-chan 
 			fmt.Printf("\n\nSummaries:\n")
 			fmt.Printf("  Total Unique Inputs (not including empty lines): %d\n", total)
 			fmt.Printf("  Succeeded: %d\n", len(csvRecords))
-			fmt.Printf("  Failed: %d\n", len(inputErrors) + len(queryErrors))
+			fmt.Printf("  Failed: %d\n", len(inputErrors)+len(queryErrors))
 		}
 	}()
 	return done

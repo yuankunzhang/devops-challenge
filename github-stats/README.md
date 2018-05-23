@@ -2,7 +2,13 @@
 
 A simple Golang program that fetches properties for a given list of public Github repositories.
 
-It reads the repository list from stdin. The list should be separated by new-lines. And each line should have this format: `$orgname/$repo`. Empty lines will be ignored and duplicates will be removed. Leading and trailing spaces in a line will be removed.
+It reads the repository list from stdin. The list should be separated by new-lines. And each line should be in the format of `$orgname/$repo`.
+
+Note that:
+
+- Empty lines will be ignored;
+- Duplicates will be removed;
+- Leading and trailing spaces in each line will be removed.
 
 For example, this is a valid input:
 
@@ -22,7 +28,7 @@ These properties are fetched for each repository:
 - The date of latest commit
 - The name of latest author
 
-**Note: It treats the latest commit as the latest commit in the default branch, which is not necessarily the master branch.**
+**Note: The commit history is fetched from the repository's default branch, which is not necessarily the master branch.**
 
 ## Dependency Management
 
@@ -139,15 +145,15 @@ $ docker run --rm -it -e GITHUB_ACCESS_TOKEN=xxx github-stats:latest [-s, [-e]]
 
 Designing choices:
 
-- I choose to use the GraphQL API instead of the Restful API, because it offers more flexibility to interact with Github. And it gives the client app a better performance (especially when the client app is large).
-- The output order can be different from the input order, because of concurrency. We can sequentialize the API requests in order to keep the order, but the performance can be a big pain. Another approach to keep the order is to sort the result before printing it.
-- The commit history is fetched from the default branch. Some repositories do not have a master branch.
+- I choose to use the GraphQL API instead of the Restful API, because it offers more flexibility to interact with Github. And it gives the client app a better performance (especially when the client app makes lots of API requests).
+- Because of concurrency, the output order can be different from the input order. We can sequentialize the API requests in order to keep the order, but the performance will be a big pain. Another approach to keep the order is to sort the result before printing it.
+- The commit history is fetched from the repository's default branch. Some repositories do not have a master branch.
 - I choose to use `context.Background()` when sending requests. This is only a starting point, and needed to be improved.
 
 Can be improved:
 
 - Sorting the result to keep the output order the same as the input order.
-- Fetching the commit history from a branch specified by the user.
+- Fetching the commit history from a branch specified by user.
 - Using a custom context instead of `context.Background()`.
 - Adding more fields to fetch, e.g. number of forks. This will be easy to achieve, thanks to the GraphQL API.
 
