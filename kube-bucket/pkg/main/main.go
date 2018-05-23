@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,6 +16,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func main() {
@@ -40,41 +41,46 @@ func main() {
 	// Add event handlers to handle add/delete/update event.
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			fmt.Printf("add ...\n")
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err != nil {
-				log.Errorf("add resource error: %v", err)
+				log.Errorf("Main(): add resource error: %v", err)
 			} else {
-				log.Infof("add resource: %s", key)
+				log.Infof("Main(): add resource: %s", key)
 				queue.Add(key)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err != nil {
-				log.Errorf("delete resource error: %v", err)
+				log.Errorf("Main(): delete resource error: %v", err)
 			} else {
-				log.Infof("delete resource: %s", key)
+				log.Infof("Main(): delete resource: %s", key)
 				queue.Add(key)
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(newObj)
 			if err != nil {
-				log.Errorf("update resource err: %v", err)
+				log.Errorf("Main(): update resource error: %v", err)
 			} else {
-				log.Infof("update resource: %s", key)
+				log.Infof("Main(): update resource: %s", key)
 				queue.Add(key)
 			}
 		},
 	})
 
+	awsSession, err := session.NewSession()
+	if err != nil {
+		log.Fatalf("Main(): failed to create aws session: %v", err)
+	}
+
+	// Create the controller
 	controller := Controller{
 		logger:    log.NewEntry(log.New()),
 		clientset: client,
 		informer:  informer,
 		queue:     queue,
-		handler:   &BucketHandler{},
+		handler:   &BucketHandler{s3.New(awsSession)},
 	}
 
 	stop := make(chan struct{})
