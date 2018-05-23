@@ -55,3 +55,11 @@ After the containers are created and started, you can now access the index page 
 
 ## Follow ups
 
+To be done:
+
+- Implement the deployment manifests for Kubernetes.
+- It's not trivial to fine-tune the performance and resouce consuming of Elasticsearch, but that's beyond this task.
+
+To dig deep:
+
+- How to reload the configurations for Nginx/Fluentd/Elasticsearch/Kibana without restarting the containers?
