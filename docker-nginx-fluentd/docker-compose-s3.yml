@@ -14,28 +14,12 @@ services:
       driver: fluentd
       options:
         fluentd-address: localhost:24224
-        tag: nginx.log
 
   fluentd:
     build: ./fluentd
     restart: always
+    volumes:
+      - ./fluentd/fluent.s3.conf:/fluentd/etc/fluent.conf:rw
     ports:
       - "24224:24224"
       - "24224:24224/udp"
-    depends_on:
-      - elasticsearch
-
-  elasticsearch:
-    image: elasticsearch
-    restart: always
-    ports:
-      - "9200:9200"
-      - "9300:9300"
-
-  kibana:
-    image: kibana
-    restart: always
-    ports:
-      - "5601:5601"
-    depends_on:
-      - elasticsearch

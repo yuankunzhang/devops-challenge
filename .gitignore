@@ -3,4 +3,4 @@ github-stats/github-stats
 .DS_Store
 .terraform
 *.tfstate.backup
-fluent.conf
+fluent.s3.conf
