@@ -9,7 +9,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/pkg/errors"
 	bucketclientset "github.com/yuankunzhang/devops-challenge/kube-bucket/pkg/client/clientset/versioned"
 	bucketinformer_v1 "github.com/yuankunzhang/devops-challenge/kube-bucket/pkg/client/informers/externalversions/bucket/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,17 +49,17 @@ type Controller struct {
 func NewController() (*Controller, error) {
 	config, err := getKubeConfig()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get kube config")
+		return nil, err
 	}
 
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create kube client instance")
+		return nil, err
 	}
 
 	bucketClient, err := bucketclientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create bucket client")
+		return nil, err
 	}
 
 	// Create a new queue. When the informer gets a resource, we add an
@@ -82,9 +81,9 @@ func NewController() (*Controller, error) {
 			event.action = "create"
 			event.newObj = obj
 			if err != nil {
-				log.Errorf("Main(): add resource error: %v", err)
+				log.Errorf("creating resource error: %v", err)
 			} else {
-				log.Infof("Main(): add resource: %s", event.key)
+				log.Infof("creating resource: %s", event.key)
 				queue.Add(event)
 			}
 		},
@@ -93,9 +92,9 @@ func NewController() (*Controller, error) {
 			event.action = "delete"
 			event.oldObj = obj
 			if err != nil {
-				log.Errorf("Main(): delete resource error: %v", err)
+				log.Errorf("deleting resource error: %v", err)
 			} else {
-				log.Infof("Main(): delete resource: %s", event.key)
+				log.Infof("deleting resource: %s", event.key)
 				queue.Add(event)
 			}
 		},
@@ -105,9 +104,9 @@ func NewController() (*Controller, error) {
 			event.oldObj = oldObj
 			event.newObj = newObj
 			if err != nil {
-				log.Errorf("Main(): update resource error: %v", err)
+				log.Errorf("updating resource error: %v", err)
 			} else {
-				log.Infof("Main(): update resource: %s", event.key)
+				log.Infof("updating resource: %s", event.key)
 				queue.Add(event)
 			}
 		},
@@ -115,7 +114,7 @@ func NewController() (*Controller, error) {
 
 	awsSession, err := session.NewSession()
 	if err != nil {
-		log.Fatalf("Main(): failed to create aws session: %v", err)
+		return nil, err
 	}
 
 	// Create the controller
@@ -138,8 +137,6 @@ func (c *Controller) Run(stop <-chan struct{}) {
 	// existing items.
 	defer c.queue.ShutDown()
 
-	c.logger.Info("Controller.Run(): initializing...")
-
 	// Start listing and watching resource changes.
 	go c.informer.Run(stop)
 
@@ -148,8 +145,6 @@ func (c *Controller) Run(stop <-chan struct{}) {
 		runtime.HandleError(fmt.Errorf("error syncing cached"))
 		return
 	}
-
-	c.logger.Info("Controller.Run(): cache sync completed")
 
 	wait.Until(c.runWorker, time.Second, stop)
 }
@@ -166,20 +161,13 @@ func (c *Controller) LastSyncResourceVersion() string {
 
 // runWorker execute the loop to process new items added in the queue.
 func (c *Controller) runWorker() {
-	log.Info("Controller.runWorker(): starting...")
-
 	for c.processNextItem() {
-		log.Info("Controller.runWorker(): processing next item...")
 	}
-
-	log.Info("Controller.runWorker(): process completed")
 }
 
 // processNextItem retrieves each queued item and takes the necessary
 // handler action based on the event type.
 func (c *Controller) processNextItem() bool {
-	log.Info("Controller.processNextItem(): starting...")
-
 	// Fetch the next item from queue.
 	// If a shutdown is requested, stop the process.
 	event, quit := c.queue.Get()
@@ -193,10 +181,10 @@ func (c *Controller) processNextItem() bool {
 	err := c.processItem(event.(Event))
 	if err != nil {
 		if c.queue.NumRequeues(event) < maxRetries {
-			c.logger.Errorf("Controller.processNextItem(): failed to process item with key %s, retrying. error: %v", event.(Event).key, err)
+			c.logger.Errorf("failed to process item with key %s, retrying. error: %v", event.(Event).key, err)
 			c.queue.AddRateLimited(event)
 		} else {
-			c.logger.Errorf("Controller.processNextItem(): failed to process item with key %s, no more retries. error: %v", event.(Event).key, err)
+			c.logger.Errorf("failed to process item with key %s, no more retries. error: %v", event.(Event).key, err)
 			c.queue.Forget(event)
 			runtime.HandleError(err)
 		}

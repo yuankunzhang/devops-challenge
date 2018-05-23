@@ -19,7 +19,7 @@ var (
 	// the scheme.
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 	// AddToScheme is a function that add types to the scheme.
-	AddToScheme   = SchemeBuilder.AddToScheme
+	AddToScheme = SchemeBuilder.AddToScheme
 )
 
 // Resource returns an instance of GroupResource.

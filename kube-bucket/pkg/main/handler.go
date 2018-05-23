@@ -23,57 +23,57 @@ type BucketHandler struct {
 
 // Init implements the Handler interface.
 func (b *BucketHandler) Init() error {
-	log.Info("BucketHandler.Init()")
 	return nil
 }
 
 // ObjectCreated implements the Handler interface.
 func (b *BucketHandler) ObjectCreated(obj interface{}) {
-	log.Info("BucketHandler.ObjectCreated()")
 	bucket := obj.(*v1.Bucket)
 	bucketName := bucket.Spec.BucketName
 
+	log.Infof("checking if bucket %s exists", bucketName)
 	exists, err := b.bucketExists(bucketName)
 	if err != nil {
-		log.Errorf("failed to check bucket: %v", err)
+		log.Errorf("failed to check bucket %s: %v", bucketName, err)
 		return
 	}
 
 	if exists {
-		log.Info("bucket exists")
+		log.Infof("bucket %s exists, skip creating", bucketName)
 		return
 	}
 
+	log.Infof("creating bucket %s", bucketName)
 	err = b.createBucket(bucketName)
 	if err != nil {
-		log.Errorf("failed to create bucket: %v", err)
+		log.Errorf("failed to create bucket %s: %v", bucketName, err)
 		return
 	}
 
-	log.Info("create bucket success")
+	log.Infof("creating bucket %s completed", bucketName)
 }
 
 // ObjectDelete implements the Handler interface.
 func (b *BucketHandler) ObjectDeleted(obj interface{}) {
-	log.Info("BucketHandler.ObjectDeleted()")
 	bucket := obj.(*v1.Bucket)
 	forceDelete := bucket.Spec.ForceDelete
 
 	if forceDelete {
 		bucketName := bucket.Spec.BucketName
+		log.Infof("deleting bucket %s", bucketName)
 		err := b.deleteBucket(bucketName)
 		if err != nil {
-			log.Errorf("failed to delete bucket: %v", err)
+			log.Errorf("failed to delete bucket %s: %v", bucketName, err)
 			return
 		}
 
-		log.Info("delete bucket success")
+		log.Infof("deleting bucket %s completed", bucketName)
 	}
 }
 
 // ObjectUpdated implements the Handler interface.
 func (b *BucketHandler) ObjectUpdated(objOld, objNew interface{}) {
-	log.Info("BucketHandler.ObjectUpdated()")
+	log.Info("object updated")
 	// TODO(yuankun): complete this.
 }
 
@@ -151,7 +151,7 @@ func (b *BucketHandler) deleteBucket(bucket string) error {
 		hasMore = *resp.IsTruncated
 	}
 
-	log.Infof("BucketHandler.deleteBucket(): %d objects deleted from bucket %s", total, bucket)
+	log.Infof("%d objects deleted from bucket %s", total, bucket)
 
 	_, err := b.s3.DeleteBucket(&s3.DeleteBucketInput{Bucket: aws.String(bucket)})
 
